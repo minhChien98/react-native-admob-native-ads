@@ -184,8 +184,6 @@ public class RNNativeAdWrapper extends LinearLayout {
 
     }
 
-    }
-
     public void addMediaView(int id) {
 
         try {
@@ -202,8 +200,6 @@ public class RNNativeAdWrapper extends LinearLayout {
     private Runnable runnable;
 
     private void setNativeAdToJS(UnifiedNativeAd nativeAd) {
-
-        try {
             WritableMap args = Arguments.createMap();
             args.putString("headline", nativeAd.getHeadline());
             args.putString("tagline", nativeAd.getBody());
@@ -218,6 +214,26 @@ public class RNNativeAdWrapper extends LinearLayout {
                 args.putInt("rating", nativeAd.getStarRating().intValue());
             }
 
+            float aspectRatio = 1.0f;
+
+
+            if (nativeAd.getResponseInfo().getMediationAdapterClassName().equals("com.google.ads.mediation.admob.AdMobAdapter")) {
+                if (nativeAd.getMediaContent() != null) {
+                    aspectRatio = nativeAd.getMediaContent().getAspectRatio();
+
+                    if (aspectRatio > 0) {
+                        args.putString("aspectRatio", String.valueOf(aspectRatio));
+                    } else {
+                        args.putString("aspectRatio", String.valueOf(1.0f));
+                    }
+
+                }
+            } else {
+                args.putString("aspectRatio", String.valueOf(1.0f));
+            }
+
+
+            WritableArray images = new WritableNativeArray();
             WritableArray images = Arguments.createArray();
             images.pushString(nativeAd.getImages().get(0).getUri().toString());
             args.putArray("images", images);
@@ -245,6 +261,11 @@ public class RNNativeAdWrapper extends LinearLayout {
                 }
             }
 
+            if (images != null) {
+                args.putArray("images", images);
+            } else {
+                args.putArray("images", null);
+            }
         }
 
         if (handler != null) {
@@ -256,6 +277,7 @@ public class RNNativeAdWrapper extends LinearLayout {
             }, adRefreshInterval);
         }
 
+      }
     }
 
 
@@ -344,6 +366,46 @@ public class RNNativeAdWrapper extends LinearLayout {
                 event);
     }
 
+<<<<<<< HEAD
+    private void loadAd() {
+
+
+        try {
+            AdLoader.Builder builder = new AdLoader.Builder(mContext, admobAdUnitId);
+            builder.forUnifiedNativeAd(onUnifiedNativeAdLoadedListener);
+
+            VideoOptions videoOptions = new VideoOptions.Builder()
+                    .setStartMuted(true)
+                    .build();
+
+            NativeAdOptions adOptions = new NativeAdOptions.Builder()
+                    .setVideoOptions(videoOptions)
+                    .setAdChoicesPlacement(adChoicesPlacement)
+                    .build();
+            builder.withNativeAdOptions(adOptions);
+
+
+            AdLoader adLoader = builder.withAdListener(adListener)
+                    .build();
+
+            AdRequest adRequest;
+
+            if (requestNonPersonalizedAdsOnly) {
+                Bundle extras = new Bundle();
+                extras.putString("npa", "1");
+                adRequest = new AdRequest.Builder().addNetworkExtrasBundle(AdMobAdapter.class, extras).build();
+            } else {
+                adRequest = new AdRequest.Builder().build();
+            }
+
+            adLoader.loadAd(adRequest);
+
+        } catch (Exception e) {
+        }
+    }
+
+    public void setLoadWithDelay(int delay) {
+=======
     UnifiedNativeAd.OnUnifiedNativeAdLoadedListener onUnifiedNativeAdLoadedListener = new UnifiedNativeAd.OnUnifiedNativeAdLoadedListener() {
         @Override
         public void onUnifiedNativeAdLoaded(UnifiedNativeAd nativeAd) {
@@ -464,6 +526,7 @@ public class RNNativeAdWrapper extends LinearLayout {
     }
 
     public  void setLoadWithDelay(int delay) {
+>>>>>>> 8cf78c45445765b083cd15005131701c87fd2954
         loadWithDelay = delay;
     }
 
@@ -471,6 +534,12 @@ public class RNNativeAdWrapper extends LinearLayout {
     public void addNewView(View child, int index) {
         try {
             nativeAdView.addView(child, index);
+<<<<<<< HEAD
+            requestLayout();
+            nativeAdView.requestLayout();
+=======
+
+>>>>>>> 8cf78c45445765b083cd15005131701c87fd2954
         } catch (Exception e) {
 
         }
