@@ -3,7 +3,6 @@ package com.ammarahmed.rnadmob.nativeads;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.LinearLayout;
@@ -20,16 +19,31 @@ import com.facebook.react.bridge.WritableNativeMap;
 import com.facebook.react.uimanager.events.RCTEventEmitter;
 import com.google.ads.mediation.admob.AdMobAdapter;
 import com.google.android.gms.ads.AdListener;
-import com.google.android.gms.ads.AdLoader;
 import com.google.android.gms.ads.AdRequest;
-import com.google.android.gms.ads.VideoOptions;
-import com.google.android.gms.ads.formats.MediaView;
-import com.google.android.gms.ads.formats.NativeAdOptions;
 import com.google.android.gms.ads.formats.UnifiedNativeAd;
 import com.google.android.gms.ads.formats.UnifiedNativeAdView;
 
-import java.util.ArrayList;
-import java.util.UUID;
+
+import java.util.Random;
+
+public class RNNativeAdWrapper extends LinearLayout {
+
+    Context mContext;
+    UnifiedNativeAdView nativeAdView;
+    UnifiedNativeAd unifiedNativeAd;
+    public int adRefreshInterval = 60000;
+    public static final String adPriceViews = "adPriceView";
+    public static final String adHeadline = "adHeadlineView";
+    public static final String adTagline = "adTaglineView";
+    public static final String adAdvertiser = "adAdvertiserView";
+    public static final String adStarRating = "adStarRating";
+    public static final String adImageView = "adImageView";
+    public static final String adIconView = "adIconView";
+    public static final String adCallToAction = "adCallToAction";
+    public static final String adStoreView = "adStoreView";
+    private int loadWithDelay = 1000;
+
+    private String admobAdUnitId = "";
 
 public class RNNativeAdWrapper extends LinearLayout {
 
@@ -159,14 +173,16 @@ public class RNNativeAdWrapper extends LinearLayout {
         mContext = context;
         createView(context);
         handler = new Handler();
-        mCatalystInstance = mContext.getCatalystInstance();
-        setId(UUID.randomUUID().hashCode() + this.getId());
+
+        Constants.cacheManager.attachAdListener(adListener);
     }
 
     public void createView(Context context) {
         LayoutInflater layoutInflater = LayoutInflater.from(context);
         View viewRoot = layoutInflater.inflate(R.layout.rn_ad_unified_native_ad, this, true);
         nativeAdView = (UnifiedNativeAdView) viewRoot.findViewById(R.id.native_ad_view);
+
+    }
 
     }
 
@@ -202,26 +218,19 @@ public class RNNativeAdWrapper extends LinearLayout {
                 args.putInt("rating", nativeAd.getStarRating().intValue());
             }
 
-            float aspectRatio = 1.0f;
+            WritableArray images = Arguments.createArray();
+            images.pushString(nativeAd.getImages().get(0).getUri().toString());
+            args.putArray("images", images);
+            args.putString("icon", nativeAd.getIcon().getUri().toString());
+            sendEvent(RNAdMobNativeViewManager.EVENT_UNIFIED_NATIVE_AD_LOADED, args);
+            attachViews();
+            new Handler().postDelayed(new Runnable() {
+                @Override
+                public void run() {
 
-
-            if (nativeAd.getResponseInfo().getMediationAdapterClassName().equals("com.google.ads.mediation.admob.AdMobAdapter")) {
-                if (nativeAd.getMediaContent() != null) {
-                    aspectRatio = nativeAd.getMediaContent().getAspectRatio();
-
-                    if (aspectRatio > 0) {
-                        args.putString("aspectRatio", String.valueOf(aspectRatio));
-                    } else {
-                        args.putString("aspectRatio", String.valueOf(1.0f));
-                    }
-
+                    attachViews();
                 }
-            } else {
-                args.putString("aspectRatio", String.valueOf(1.0f));
-            }
-
-
-            WritableArray images = new WritableNativeArray();
+            },500);
 
             if (nativeAd.getImages() != null && nativeAd.getImages().size() > 0) {
 
@@ -236,11 +245,33 @@ public class RNNativeAdWrapper extends LinearLayout {
                 }
             }
 
-            if (images != null) {
-                args.putArray("images", images);
-            } else {
-                args.putArray("images", null);
-            }
+        }
+
+        if (handler != null) {
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    loadAd();
+                }
+            }, adRefreshInterval);
+        }
+
+    }
+
+
+    public  void removeHandler() {
+        if (handler != null) {
+            handler.removeCallbacks(null);
+            handler = null;
+        }
+
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        removeHandler();
+    }
 
             if (nativeAd.getIcon() != null) {
                 args.putString("icon", nativeAd.getIcon().getUri().toString());
@@ -313,44 +344,126 @@ public class RNNativeAdWrapper extends LinearLayout {
                 event);
     }
 
-    private void loadAd() {
-
-
-        try {
-            AdLoader.Builder builder = new AdLoader.Builder(mContext, admobAdUnitId);
-            builder.forUnifiedNativeAd(onUnifiedNativeAdLoadedListener);
-
-            VideoOptions videoOptions = new VideoOptions.Builder()
-                    .setStartMuted(true)
-                    .build();
-
-            NativeAdOptions adOptions = new NativeAdOptions.Builder()
-                    .setVideoOptions(videoOptions)
-                    .setAdChoicesPlacement(adChoicesPlacement)
-                    .build();
-            builder.withNativeAdOptions(adOptions);
-
-
-            AdLoader adLoader = builder.withAdListener(adListener)
-                    .build();
-
-            AdRequest adRequest;
-
-            if (requestNonPersonalizedAdsOnly) {
-                Bundle extras = new Bundle();
-                extras.putString("npa", "1");
-                adRequest = new AdRequest.Builder().addNetworkExtrasBundle(AdMobAdapter.class, extras).build();
-            } else {
-                adRequest = new AdRequest.Builder().build();
+    UnifiedNativeAd.OnUnifiedNativeAdLoadedListener onUnifiedNativeAdLoadedListener = new UnifiedNativeAd.OnUnifiedNativeAdLoadedListener() {
+        @Override
+        public void onUnifiedNativeAdLoaded(UnifiedNativeAd nativeAd) {
+            if (nativeAd != null) {
+                unifiedNativeAd = nativeAd;
+                nativeAdView.setNativeAd(unifiedNativeAd);
             }
 
-            adLoader.loadAd(adRequest);
-
-        } catch (Exception e) {
+            setNativeAdToJS(nativeAd);
         }
+    };
+
+
+    AdListener adListener = new AdListener() {
+        @Override
+        public void onAdFailedToLoad(int i) {
+            super.onAdFailedToLoad(i);
+
+            String errorMessage = "Unknown error";
+            switch (i) {
+                case AdRequest.ERROR_CODE_INTERNAL_ERROR:
+                    errorMessage = "Internal error, an invalid response was received from the ad server.";
+                    break;
+                case AdRequest.ERROR_CODE_INVALID_REQUEST:
+                    errorMessage = "Invalid ad request, possibly an incorrect ad unit ID was given.";
+                    break;
+                case AdRequest.ERROR_CODE_NETWORK_ERROR:
+                    errorMessage = "The ad request was unsuccessful due to network connectivity.";
+                    break;
+                case AdRequest.ERROR_CODE_NO_FILL:
+                    errorMessage = "The ad request was successful, but no ad was returned due to lack of ad inventory.";
+                    break;
+            }
+            WritableMap event = Arguments.createMap();
+            WritableMap error = Arguments.createMap();
+            error.putString("message", errorMessage);
+            event.putMap("error", error);
+
+            sendEvent(RNAdMobNativeViewManager.EVENT_AD_FAILED_TO_LOAD, event);
+        }
+
+        @Override
+        public void onAdClosed() {
+            super.onAdClosed();
+            sendEvent(RNAdMobNativeViewManager.EVENT_AD_CLOSED, null);
+        }
+
+        @Override
+        public void onAdOpened() {
+            super.onAdOpened();
+            sendEvent(RNAdMobNativeViewManager.EVENT_AD_OPENED, null);
+        }
+
+        @Override
+        public void onAdClicked() {
+            super.onAdClicked();
+            sendEvent(RNAdMobNativeViewManager.EVENT_AD_CLICKED, null);
+
+        }
+
+        @Override
+        public void onAdLoaded() {
+            super.onAdLoaded();
+            sendEvent(RNAdMobNativeViewManager.EVENT_AD_LOADED, null);
+            loadAd();
+        }
+
+        @Override
+        public void onAdImpression() {
+            super.onAdImpression();
+            sendEvent(RNAdMobNativeViewManager.EVENT_AD_IMPRESSION, null);
+        }
+
+        @Override
+        public void onAdLeftApplication() {
+            super.onAdLeftApplication();
+            sendEvent(RNAdMobNativeViewManager.EVENT_AD_LEFT_APPLICATION, null);
+        }
+    };
+
+
+    private void loadAd() {
+
+        new Handler().postDelayed(new Runnable() {
+            @Override
+            public void run() {
+
+                if (Constants.cacheManager.numberOfAds() != 0) {
+
+                    int numOfAds = Constants.cacheManager.numberOfAds();
+
+                    Random random = new Random();
+                    int randomNumber = random.nextInt(numOfAds - 0) + 0;
+
+                    UnifiedNativeAd nativeAd = Constants.cacheManager.getNativeAd(randomNumber);
+
+                    if (nativeAd != null) {
+
+                        if (nativeAd != null) {
+                            unifiedNativeAd = nativeAd;
+                            nativeAdView.setNativeAd(unifiedNativeAd);
+                        }
+                        setNativeAdToJS(nativeAd);
+
+                    } else {
+                        if (adListener != null)
+                            adListener.onAdFailedToLoad(3);
+                    }
+
+                } else {
+                    Constants.cacheManager.loadNativeAds(mContext,admobAdUnitId,5,600000);
+                    if (adListener != null)
+                        adListener.onAdFailedToLoad(3);
+                }
+
+            }
+        },loadWithDelay);
     }
 
-    public void setLoadWithDelay(int delay) {
+    public  void setLoadWithDelay(int delay) {
         loadWithDelay = delay;
     }
 
@@ -358,12 +471,9 @@ public class RNNativeAdWrapper extends LinearLayout {
     public void addNewView(View child, int index) {
         try {
             nativeAdView.addView(child, index);
-            requestLayout();
-            nativeAdView.requestLayout();
         } catch (Exception e) {
 
         }
-
     }
 
     @Override
